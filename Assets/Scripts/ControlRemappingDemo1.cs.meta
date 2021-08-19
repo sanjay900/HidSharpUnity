@@ -1,0 +1,28 @@
+fileFormatVersion: 2
+guid: 094c1b17013bb3abd8d613d620d4127f
+labels:
+- Input
+- Joysticks
+- Controllers
+- Rewired
+- Hotplugging
+- Keyboard
+- Mouse
+- Touch
+- InputManager
+- Control
+- Gamepad
+- Controller
+- Joystick
+- Xbox360
+- XInput
+- DirectInput
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
