@@ -97,7 +97,7 @@ namespace HidSharp.Platform.Linux
 
         protected override object[] GetHidDeviceKeys()
         {
-            return GetDeviceKeys("hidraw");
+            return GetDeviceKeys("input");
         }
 
         protected override object[] GetSerialDeviceKeys()

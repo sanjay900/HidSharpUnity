@@ -207,10 +207,5 @@ namespace HidSharp.Platform.MacOS
         {
             get { return _location; }
         }
-
-        public override string InputPath
-        {
-            get { return _path.ToString(); }
-        }
     }
 }

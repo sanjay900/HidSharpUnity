@@ -197,10 +197,6 @@ namespace HidSharp
         {
             get;
         }
-        public abstract string InputPath
-        {
-            get;
-        }
 
         /// <exclude />
         [Obsolete, EditorBrowsable(EditorBrowsableState.Never)]

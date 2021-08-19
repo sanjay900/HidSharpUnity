@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
 using Rewired;
@@ -10,6 +11,16 @@ using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 namespace HidSharpUnity
 {
+    public class RewiredSharpJoystick {
+        private Joystick _joystick;
+        public Joystick rewiredJoystick { get => _joystick; }
+        private HidDevice _hiddevice;
+        public HidDevice hidSharpDevice { get => _hiddevice; }
+        public RewiredSharpJoystick(Joystick joystick, HidDevice device) {
+            this._joystick = joystick;
+            this._hiddevice = device;
+        }
+    }
     public class HidSharpUnity
     {
 
@@ -31,7 +42,7 @@ namespace HidSharpUnity
             Array.Copy(sourceArray, array, 16);
             return new Guid(array);
         }
-        public HidDevice findHidSharpDevice(Joystick joystick)
+        public RewiredSharpJoystick findHidSharpDevice(Joystick joystick)
         {
             var list = DeviceList.Local;
             string id = joystick.hardwareIdentifier;
@@ -57,17 +68,17 @@ namespace HidSharpUnity
                 }
                 // If we sort the ig numbers, than the device list will be in the same order as the userIndex
                 xinputDevices.Sort((x,y) => x.DevicePath.Split(new [] {"ig_"}, StringSplitOptions.None)[1].Split('#')[0].CompareTo(y.DevicePath.Split(new [] {"ig_"}, StringSplitOptions.None)[1].Split('#')[0]));
-                return xinputDevices[userIndex-1];
+                return new RewiredSharpJoystick(joystick, xinputDevices[userIndex-1]);
 
             }
             foreach (HidDevice device in list.GetHidDevices(vid, pid, null, null))
             {
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 {
-                    // deviceInstanceGuid is just a SHA1 hash of the InputPath
-                    if (CreateGuidHashSHA1(device.InputPath) == joystick.deviceInstanceGuid)
+                    // deviceInstanceGuid is just a SHA1 hash of the DevicePath
+                    if (CreateGuidHashSHA1(device.DevicePath) == joystick.deviceInstanceGuid)
                     {
-                        return device;
+                        return new RewiredSharpJoystick(joystick, device);
                     }
                 }
                 else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -94,7 +105,7 @@ namespace HidSharpUnity
                     }
                     if (guid == joystick.deviceInstanceGuid)
                     {
-                        return device;
+                        return new RewiredSharpJoystick(joystick, device);
                     }
                 }
                 else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
@@ -113,10 +124,11 @@ namespace HidSharpUnity
                         // Now sort the HidSharp devices, this means that both lists are in the same order
                         hidDevices.Sort((x, y) => x.Location.CompareTo(y.Location));
                         // And return the hidsharp at the same index
-                        return hidDevices.ToList()[sortedJoys.IndexOf(joystick)];
+                        return new RewiredSharpJoystick(joystick, hidDevices.ToList()[sortedJoys.IndexOf(joystick)]);
                     }
                 }
             }
+            Debug.Log("Unable to find hidSharpDevice for " + joystick.hardwareIdentifier);
             return null;
         }
     }

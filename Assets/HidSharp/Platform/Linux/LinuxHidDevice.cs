@@ -33,8 +33,8 @@ namespace HidSharp.Platform.Linux
         int _vid, _pid, _version;
         int _maxInput, _maxOutput, _maxFeature;
         bool _reportsUseID;
-        string _path, _fileSystemName, _input;
-
+        string _path, _fileSystemName, _hidRawPath;
+        bool _hasHidRaw = false;
         LinuxHidDevice()
         {
             _getInfoLock = new object();
@@ -57,64 +57,60 @@ namespace HidSharp.Platform.Linux
                             string devnode = NativeMethodsLibudev.Instance.udev_device_get_devnode(device);
                             if (devnode != null)
                             {
-                                d._fileSystemName = devnode;
+                                d._path = devnode;
 
                                 //if (NativeMethodsLibudev.Instance.udev_device_get_is_initialized(device) > 0)
                                 {
-                                    IntPtr hidParent = NativeMethodsLibudev.Instance.udev_device_get_parent_with_subsystem_devtype(device, "hid", null);
-                                    IntPtr enumerate = NativeMethodsLibudev.Instance.udev_enumerate_new(udev);
-                                    if (IntPtr.Zero != enumerate)
+                                    IntPtr parent = NativeMethodsLibudev.Instance.udev_device_get_parent_with_subsystem_devtype(device, "usb", "usb_device");
+                                    if (IntPtr.Zero != parent)
                                     {
-                                        try
+                                        IntPtr enumerate = NativeMethodsLibudev.Instance.udev_enumerate_new(udev);
+                                        if (IntPtr.Zero != enumerate)
                                         {
-                                            if (0 == NativeMethodsLibudev.Instance.udev_enumerate_add_match_subsystem(enumerate, "input") &&
-                                                0 == NativeMethodsLibudev.Instance.udev_enumerate_add_match_parent(enumerate, hidParent) &&
-                                                0 == NativeMethodsLibudev.Instance.udev_enumerate_scan_devices(enumerate))
+                                            try
                                             {
-                                                IntPtr entry;
-                                                for (entry = NativeMethodsLibudev.Instance.udev_enumerate_get_list_entry(enumerate); entry != IntPtr.Zero;
-                                                    entry = NativeMethodsLibudev.Instance.udev_list_entry_get_next(entry))
+                                                if (0 == NativeMethodsLibudev.Instance.udev_enumerate_add_match_subsystem(enumerate, "hidraw") &&
+                                                    0 == NativeMethodsLibudev.Instance.udev_enumerate_add_match_parent(enumerate, parent) &&
+                                                    0 == NativeMethodsLibudev.Instance.udev_enumerate_scan_devices(enumerate))
                                                 {
-                                                    string syspath = NativeMethodsLibudev.Instance.udev_list_entry_get_name(entry);
-                                                    if (syspath != null)
+                                                    IntPtr entry;
+                                                    for (entry = NativeMethodsLibudev.Instance.udev_enumerate_get_list_entry(enumerate); entry != IntPtr.Zero;
+                                                        entry = NativeMethodsLibudev.Instance.udev_list_entry_get_next(entry))
                                                     {
-                                                        IntPtr device2 = NativeMethodsLibudev.Instance.udev_device_new_from_syspath(udev, syspath);
-                                                        try
+                                                        string syspath = NativeMethodsLibudev.Instance.udev_list_entry_get_name(entry);
+                                                        if (syspath != null)
                                                         {
-                                                            if (IntPtr.Zero != device2)
+                                                            IntPtr device2 = NativeMethodsLibudev.Instance.udev_device_new_from_syspath(udev, syspath);
+                                                            try
                                                             {
-                                                                string input = NativeMethodsLibudev.Instance.udev_device_get_devnode(device2);
-                                                                if (input != null) {
-                                                                    // We want the eventx nodes, not the jsx ones.
-                                                                    if (input.IndexOf("event") != -1) {
-                                                                        d._input = input;
+                                                                if (IntPtr.Zero != device2)
+                                                                {
+                                                                    string input = NativeMethodsLibudev.Instance.udev_device_get_devnode(device2);
+                                                                    if (input != null) {
+                                                                        d._hidRawPath = syspath;
+                                                                        d._hasHidRaw = true;
                                                                     }
                                                                 }
                                                             }
-                                                        }
-                                                        finally
-                                                        {
-                                                            NativeMethodsLibudev.Instance.udev_device_unref(device2);
+                                                            finally
+                                                            {
+                                                                NativeMethodsLibudev.Instance.udev_device_unref(device2);
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
+                                            finally
+                                            {
+                                                NativeMethodsLibudev.Instance.udev_enumerate_unref(enumerate);
+                                            }
                                         }
-                                        finally
-                                        {
-                                            NativeMethodsLibudev.Instance.udev_enumerate_unref(enumerate);
-                                        }
-                                    }
-                                    IntPtr parent = NativeMethodsLibudev.Instance.udev_device_get_parent_with_subsystem_devtype(device, "usb", "usb_device");
-                                    if (IntPtr.Zero != parent)
-                                    {
                                         string manufacturer = NativeMethodsLibudev.Instance.udev_device_get_sysattr_value(parent, "manufacturer");
                                         string productName = NativeMethodsLibudev.Instance.udev_device_get_sysattr_value(parent, "product");
                                         string serialNumber = NativeMethodsLibudev.Instance.udev_device_get_sysattr_value(parent, "serial");
                                         string idVendor = NativeMethodsLibudev.Instance.udev_device_get_sysattr_value(parent, "idVendor");
                                         string idProduct = NativeMethodsLibudev.Instance.udev_device_get_sysattr_value(parent, "idProduct");
                                         string bcdDevice = NativeMethodsLibudev.Instance.udev_device_get_sysattr_value(parent, "bcdDevice");
-
                                         int vid, pid, version;
                                         if (NativeMethods.TryParseHex(idVendor, out vid) &&
                                             NativeMethods.TryParseHex(idProduct, out pid) &&
@@ -150,10 +146,13 @@ namespace HidSharp.Platform.Linux
         protected override DeviceStream OpenDeviceDirectly(OpenConfiguration openConfig)
         {
             RequiresGetInfo();
-
-            var stream = new LinuxHidStream(this);
-            try { stream.Init(_path); return stream; }
-            catch { stream.Close(); throw; }
+            // We need Hidraw to actually talk to devices, but XInput devices on linux don't expose it.
+            if (_hasHidRaw) {
+                var stream = new LinuxHidStream(this);
+                try { stream.Init(_hidRawPath); return stream; }
+                catch { stream.Close(); throw; }
+            }
+            throw DeviceException.CreateIOException(this, "Unable to find Hidraw interface (is this an xinput device?)");
         }
 
         public override string GetManufacturer()
@@ -203,7 +202,7 @@ namespace HidSharp.Platform.Linux
             parser = null; reportDescriptor = null;
 
             int handle;
-            try { handle = LinuxHidStream.DeviceHandleFromPath(_path, this, NativeMethods.oflag.NONBLOCK); }
+            try { handle = LinuxHidStream.DeviceHandleFromPath(_hidRawPath, this, NativeMethods.oflag.NONBLOCK); }
             catch (FileNotFoundException) { throw DeviceException.CreateIOException(this, "Failed to read report descriptor."); }
 
             try
@@ -258,11 +257,6 @@ namespace HidSharp.Platform.Linux
         public override string DevicePath
         {
             get { return _path; }
-        }
-
-        public override string InputPath
-        {
-            get { return _input; }
         }
 
         public override int VendorID
